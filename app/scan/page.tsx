@@ -29,6 +29,12 @@ export default function ScanPage() {
   }, []);
 
   useEffect(() => {
+    if (!result || (result.kind !== "match" && result.kind !== "order")) return;
+    const timer = window.setTimeout(() => setResult(null), 2000);
+    return () => window.clearTimeout(timer);
+  }, [result]);
+
+  useEffect(() => {
     if (!result || result.kind === "unknown") return;
     const context = new AudioContext();
     void context.resume();
