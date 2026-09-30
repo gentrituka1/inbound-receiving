@@ -13,6 +13,7 @@ export default function ScanPage() {
   const [code, setCode] = useState("");
   const [downloading, setDownloading] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
+  const [highlight, setHighlight] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -29,10 +30,10 @@ export default function ScanPage() {
   }, []);
 
   useEffect(() => {
-    if (!result || (result.kind !== "match" && result.kind !== "order")) return;
-    const timer = window.setTimeout(() => setResult(null), 2000);
+    if (!highlight) return;
+    const timer = window.setTimeout(() => setHighlight(false), 2000);
     return () => window.clearTimeout(timer);
-  }, [result]);
+  }, [result, highlight]);
 
   useEffect(() => {
     if (!result || result.kind === "unknown") return;
@@ -59,6 +60,7 @@ export default function ScanPage() {
     if (!next.result) return;
     setProducts(next.products);
     setResult(next.result);
+    setHighlight(next.result.kind === "match" || next.result.kind === "order");
     if (next.result.kind === "match" || next.result.kind === "over") saveCounts(next.products);
   }
 
@@ -112,9 +114,9 @@ export default function ScanPage() {
 
       {products && !showSheet ? (
         <div className="grid items-start gap-4 lg:grid-cols-2">
-          <BarcodeCamera onScan={scan} status={scanStatus(result)} />
+          <BarcodeCamera onScan={scan} status={highlight ? scanStatus(result) : result?.kind === "unknown" ? "bad" : result?.kind === "over" ? "over" : null} />
           <div className="lg:sticky lg:top-4">
-            <ResultCard result={result} />
+            <ResultCard result={result} highlight={highlight} />
           </div>
           <form
             className="rounded-3xl border border-[var(--line)] bg-[var(--paper)] p-4 shadow-[0_10px_30px_rgba(42,36,32,0.06)]"
@@ -153,7 +155,7 @@ function scanStatus(result: ScanResult | null): "ok" | "bad" | "over" | null {
   return "ok";
 }
 
-function ResultCard({ result }: { result: ScanResult | null }) {
+function ResultCard({ result, highlight }: { result: ScanResult | null; highlight: boolean }) {
   if (!result) {
     return (
       <section className="rounded-3xl border border-[var(--line)] bg-[var(--paper)] px-5 py-8 shadow-[0_10px_30px_rgba(42,36,32,0.06)]">
@@ -166,7 +168,7 @@ function ResultCard({ result }: { result: ScanResult | null }) {
   if (result.kind === "order") {
     const count = result.products.length;
     return (
-      <section className="rounded-3xl bg-[var(--green-bg)] px-4 py-5 text-[var(--green)]">
+      <section className={`rounded-3xl px-4 py-5 ${highlight ? "bg-[var(--green-bg)] text-[var(--green)]" : "border border-[var(--line)] bg-[var(--paper)] text-[var(--ink)]"}`}>
         <div className="flex items-start justify-between gap-3 px-1">
           <div className="min-w-0">
             <p className="text-sm font-semibold tracking-wide uppercase">Porosia</p>
@@ -217,7 +219,11 @@ function ResultCard({ result }: { result: ScanResult | null }) {
     );
   }
 
-  const tone = result.kind === "over" ? "bg-[var(--orange-bg)] text-[var(--orange)]" : "bg-[var(--green-bg)] text-[var(--green)]";
+  const tone = result.kind === "over"
+    ? "bg-[var(--orange-bg)] text-[var(--orange)]"
+    : highlight
+      ? "bg-[var(--green-bg)] text-[var(--green)]"
+      : "border border-[var(--line)] bg-[var(--paper)] text-[var(--ink)]";
   return (
     <section className={`rounded-3xl px-5 py-8 ${tone}`}>
       <p className="text-sm font-semibold tracking-[0.16em] uppercase">{result.kind === "over" ? "Copë shtesë" : "U skanua"}</p>
