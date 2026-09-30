@@ -84,41 +84,38 @@ export async function loadProducts(): Promise<Product[]> {
   });
 }
 
-function isReferenceScan(code: string): boolean {
-  return /^\d{4}-[A-Za-z]{2}\d{4}$/.test(code);
-}
-
-function isOrderScan(code: string): boolean {
-  return /^\d+-\d+$/.test(code);
-}
-
 export function isAcceptedScan(raw: string): boolean {
-  const code = parseScan(raw).code;
-  return isReferenceScan(code) || isOrderScan(code);
+  return parseScan(raw).code.length > 0;
+}
+
+function countMatch(products: Product[], code: string, field: "refCode" | "ean"): { products: Product[]; result: ScanResult } | null {
+  const matches = products
+    .map((product, index) => ({ product, index }))
+    .filter((item) => codesMatch(item.product[field], code));
+  if (matches.length === 0) return null;
+  const target = matches.find((item) => item.product.scanned < item.product.quantity) ?? matches[matches.length - 1];
+  const next = products.map((product, index) =>
+    index === target.index ? { ...product, scanned: product.scanned + 1 } : product,
+  );
+  const product = next[target.index];
+  return {
+    products: next,
+    result: { kind: product.scanned > product.quantity ? "over" : "match", product },
+  };
 }
 
 export function applyScan(products: Product[], rawCode: string): { products: Product[]; result: ScanResult | null } {
   const code = parseScan(rawCode).code;
-  if (!isReferenceScan(code) && !isOrderScan(code)) return { products, result: null };
+  if (!code) return { products, result: null };
 
-  if (isReferenceScan(code)) {
-    const matches = products
-      .map((product, index) => ({ product, index }))
-      .filter((item) => codesMatch(item.product.refCode, code));
-    if (matches.length === 0) return { products, result: { kind: "unknown", code } };
-    const target = matches.find((item) => item.product.scanned < item.product.quantity) ?? matches[matches.length - 1];
-    const next = products.map((product, index) =>
-      index === target.index ? { ...product, scanned: product.scanned + 1 } : product,
-    );
-    const product = next[target.index];
-    return {
-      products: next,
-      result: { kind: product.scanned > product.quantity ? "over" : "match", product },
-    };
-  }
+  const byRef = countMatch(products, code, "refCode");
+  if (byRef) return byRef;
 
   const orders = products.filter((product) => codesMatch(product.orderId, code));
   if (orders.length > 0) return { products, result: { kind: "order", code, products: orders } };
+
+  const byEan = countMatch(products, code, "ean");
+  if (byEan) return byEan;
 
   return { products, result: { kind: "unknown", code } };
 }

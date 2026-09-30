@@ -135,9 +135,8 @@ export function BarcodeCamera({
             <div className="absolute top-[27%] bottom-[27%] left-0 w-[8%] bg-black/70" />
             <div className="absolute top-[27%] right-0 bottom-[27%] w-[8%] bg-black/70" />
             <div
-              className={`absolute top-[27%] right-[8%] bottom-[27%] left-[8%] rounded-2xl border-4 ${
-                status === "ok" ? "border-[var(--green)]" : status === "bad" ? "border-[var(--red)]" : status === "over" ? "border-[var(--orange)]" : "border-white"
-              }`}
+              className={`absolute top-[27%] right-[8%] bottom-[27%] left-[8%] rounded-2xl border-4 ${status === "ok" ? "border-[var(--green)]" : status === "bad" ? "border-[var(--red)]" : status === "over" ? "border-[var(--orange)]" : "border-white"
+                }`}
             />
           </div>
         ) : (
