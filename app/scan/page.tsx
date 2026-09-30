@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { BarcodeCamera } from "@/components/BarcodeCamera";
-import { applyScan, downloadCopy, isAcceptedScan, loadProducts, saveCounts, scannedPieces, skanuara, type Product, type ScanResult } from "@/lib/list";
+import { ProductSheet } from "@/components/ProductSheet";
+import { applyScan, downloadCopy, isAcceptedScan, loadProducts, saveCounts, skanuara, type Product, type ScanResult } from "@/lib/list";
 
 export default function ScanPage() {
   const [products, setProducts] = useState<Product[] | null>(null);
@@ -11,6 +12,7 @@ export default function ScanPage() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [code, setCode] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [showSheet, setShowSheet] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -54,38 +56,55 @@ export default function ScanPage() {
     if (next.result.kind === "match" || next.result.kind === "over") saveCounts(next.products);
   }
 
-  const pieces = products ? scannedPieces(products) : 0;
+  function resetProduct(row: number) {
+    if (!products) return;
+    const next = products.map((product) => (product.row === row ? { ...product, scanned: 0 } : product));
+    setProducts(next);
+    saveCounts(next);
+    setResult((current) => {
+      if (!current || current.kind === "unknown") return current;
+      if (current.kind === "order") {
+        return { ...current, products: current.products.map((product) => (product.row === row ? { ...product, scanned: 0 } : product)) };
+      }
+      return current.product.row === row ? null : current;
+    });
+  }
 
   return (
     <main className="mx-auto flex min-h-dvh w-full max-w-6xl flex-col gap-4 px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
-        <Link href="/" className="text-sm font-semibold text-[var(--navy)]">
-          Kreu
-        </Link>
-        {pieces > 0 ? (
-          <button
-            type="button"
-            disabled={downloading || !products}
-            onClick={() => {
-              if (!products) return;
-              setDownloading(true);
-              void downloadCopy(products).finally(() => setDownloading(false));
-            }}
-            className="min-h-11 rounded-full bg-[var(--navy)] px-4 text-center text-sm font-semibold text-white disabled:opacity-60"
-          >
-            {downloading ? "Po përgatitet kopja…" : "Përfundo skanimin"}
-          </button>
-        ) : (
-          <button type="button" disabled className="min-h-11 rounded-full bg-[var(--navy)] px-4 text-center text-sm font-semibold text-white disabled:opacity-60">
-            Ende pa skanime
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Link href="/" className="text-sm font-semibold text-[var(--navy)]">
+            Kreu
+          </Link>
+          {products ? (
+            <button
+              type="button"
+              onClick={() => setShowSheet((open) => !open)}
+              className="min-h-11 rounded-full border border-[var(--line)] bg-[var(--paper)] px-4 text-sm font-semibold text-[var(--ink)]"
+            >
+              {showSheet ? "Kthehu te skaneri" : "Shiko produktet e skanuara"}
+            </button>
+          ) : null}
+        </div>
       </header>
 
       {error ? <p className="rounded-2xl bg-[var(--red-bg)] px-4 py-3 text-sm text-[var(--red)]">{error}</p> : null}
       {!products && !error ? <p className="text-[var(--muted)]">Po ngarkohet lista e produkteve…</p> : null}
 
-      {products ? (
+      {products && showSheet ? (
+        <ProductSheet
+          products={products}
+          downloading={downloading}
+          onReset={resetProduct}
+          onDownload={() => {
+            setDownloading(true);
+            void downloadCopy(products).finally(() => setDownloading(false));
+          }}
+        />
+      ) : null}
+
+      {products && !showSheet ? (
         <div className="grid items-start gap-4 lg:grid-cols-2">
           <BarcodeCamera onScan={scan} status={scanStatus(result)} />
           <div className="lg:sticky lg:top-4">
