@@ -1,6 +1,5 @@
 import { parseScan } from "./codes";
 
-const SHEET_URL = "https://opensheet.elk.sh/1IR0CyGqtCaxxq1sADKztFgHdVw9O4zFkge-sr4CkaD4/Sheet1";
 const STORAGE_KEY = "inbound-skanuara-v1";
 
 export type Product = {
@@ -17,14 +16,6 @@ export type ScanResult =
   | { kind: "match" | "over"; product: Product }
   | { kind: "order"; code: string; products: Product[] }
   | { kind: "unknown"; code: string };
-
-type SheetRow = {
-  "Order ID"?: string;
-  "Reference Code"?: string;
-  "Barkod / EAN"?: string;
-  Emertimi?: string;
-  Sasia?: string | number;
-};
 
 export function skanuara(product: Pick<Product, "scanned" | "quantity">): string {
   return `${product.scanned}/${product.quantity}`;
@@ -58,30 +49,17 @@ export function saveCounts(products: Product[]) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(counts));
 }
 
-function isSummaryRow(row: SheetRow): boolean {
-  const refCode = String(row["Reference Code"] ?? "").trim();
-  const ean = String(row["Barkod / EAN"] ?? "").trim();
-  return !refCode && !ean;
-}
-
-export async function loadProducts(): Promise<Product[]> {
-  const response = await fetch(SHEET_URL, { cache: "no-store" });
-  if (!response.ok) throw new Error("Lista e produkteve nuk u ngarkua.");
-  const rows = (await response.json()) as SheetRow[];
+export async function loadProducts(): Promise<{ shared: boolean; products: Product[] }> {
+  const response = await fetch("/api/products", { cache: "no-store" });
+  const body = (await response.json()) as { shared?: boolean; products?: Product[]; error?: string };
+  if (!response.ok) throw new Error(body.error || "Lista e produkteve nuk u ngarkua.");
+  const products = body.products || [];
+  if (body.shared) return { shared: true, products };
   const saved = readSaved();
-  return rows.filter((row) => !isSummaryRow(row)).map((row, index) => {
-    const product: Product = {
-      row: index + 2,
-      orderId: String(row["Order ID"] ?? "").trim(),
-      refCode: String(row["Reference Code"] ?? "").trim(),
-      ean: String(row["Barkod / EAN"] ?? "").trim(),
-      name: String(row.Emertimi ?? "").trim(),
-      quantity: Math.max(0, Math.round(Number(row.Sasia) || 0)),
-      scanned: 0,
-    };
-    product.scanned = saved[rowKey(product)] ?? 0;
-    return product;
-  });
+  return {
+    shared: false,
+    products: products.map((product) => ({ ...product, scanned: saved[rowKey(product)] ?? 0 })),
+  };
 }
 
 export function isAcceptedScan(raw: string): boolean {

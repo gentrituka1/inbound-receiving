@@ -30,7 +30,7 @@ export function BarcodeCamera({
   const videoRef = useRef<HTMLVideoElement>(null);
   const onScanRef = useRef(onScan);
   const stopRef = useRef<(() => void) | null>(null);
-  const lastRef = useRef<{ code: string; at: number } | null>(null);
+  const readyAt = useRef(0);
   const [live, setLive] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -48,12 +48,8 @@ export function BarcodeCamera({
     const code = raw.replace(/[\u0000-\u001F\u007F]/g, " ").replace(/\s+/g, " ").trim();
     if (!isAcceptedScan(code)) return;
     const now = Date.now();
-    const last = lastRef.current;
-    if (last && last.code === code && now - last.at < 1400) {
-      last.at = now;
-      return;
-    }
-    lastRef.current = { code, at: now };
+    if (now < readyAt.current) return;
+    readyAt.current = now + 2000;
     setFlash(code);
     window.setTimeout(() => setFlash((current) => (current === code ? "" : current)), 500);
     if (navigator.vibrate) navigator.vibrate(40);

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { BarcodeCamera } from "@/components/BarcodeCamera";
 import { ProductSheet } from "@/components/ProductSheet";
 import { applyScan, downloadCopy, isAcceptedScan, loadProducts, saveCounts, skanuara, type Product, type ScanResult } from "@/lib/list";
@@ -14,18 +14,29 @@ export default function ScanPage() {
   const [downloading, setDownloading] = useState(false);
   const [showSheet, setShowSheet] = useState(false);
   const [highlight, setHighlight] = useState(false);
+  const [shared, setShared] = useState(false);
+  const sharedRef = useRef(false);
+  const readyAt = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
-    loadProducts()
-      .then((rows) => {
-        if (!cancelled) setProducts(rows);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Lista e produkteve nuk u ngarkua.");
-      });
+    async function refresh() {
+      const data = await loadProducts();
+      if (cancelled) return;
+      sharedRef.current = data.shared;
+      setShared(data.shared);
+      setProducts(data.products);
+    }
+    refresh().catch((cause: unknown) => {
+      if (!cancelled) setError(cause instanceof Error ? cause.message : "Lista e produkteve nuk u ngarkua.");
+    });
+    const timer = window.setInterval(() => {
+      if (!sharedRef.current) return;
+      refresh().catch(() => undefined);
+    }, 4000);
     return () => {
       cancelled = true;
+      window.clearInterval(timer);
     };
   }, []);
 
@@ -54,8 +65,27 @@ export default function ScanPage() {
     return () => void context.close();
   }, [result]);
 
-  function scan(raw: string) {
-    if (!products || !isAcceptedScan(raw)) return;
+  async function scan(raw: string) {
+    const now = Date.now();
+    if (!products || !isAcceptedScan(raw) || now < readyAt.current) return;
+    readyAt.current = now + 2000;
+    if (shared) {
+      const response = await fetch("/api/scan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: raw }),
+      });
+      const body = (await response.json()) as { products?: Product[]; result?: ScanResult | null; error?: string };
+      if (!response.ok || !body.result) {
+        setError(body.error || "Skanimi nuk u ruajt në dokument.");
+        return;
+      }
+      setError("");
+      if (body.products) setProducts(body.products);
+      setResult(body.result);
+      setHighlight(body.result.kind === "match" || body.result.kind === "order");
+      return;
+    }
     const next = applyScan(products, raw);
     if (!next.result) return;
     setProducts(next.products);
@@ -64,11 +94,26 @@ export default function ScanPage() {
     if (next.result.kind === "match" || next.result.kind === "over") saveCounts(next.products);
   }
 
-  function resetProduct(row: number) {
+  async function resetProduct(row: number) {
     if (!products) return;
-    const next = products.map((product) => (product.row === row ? { ...product, scanned: 0 } : product));
-    setProducts(next);
-    saveCounts(next);
+    if (shared) {
+      const response = await fetch("/api/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ row }),
+      });
+      const body = (await response.json()) as { products?: Product[]; error?: string };
+      if (!response.ok || !body.products) {
+        setError(body.error || "Rivendosja nuk u ruajt në dokument.");
+        return;
+      }
+      setError("");
+      setProducts(body.products);
+    } else {
+      const next = products.map((product) => (product.row === row ? { ...product, scanned: 0 } : product));
+      setProducts(next);
+      saveCounts(next);
+    }
     setResult((current) => {
       if (!current || current.kind === "unknown") return current;
       if (current.kind === "order") {
@@ -95,6 +140,11 @@ export default function ScanPage() {
             </button>
           ) : null}
         </div>
+        {products ? (
+          <p className="text-sm text-[var(--muted)]">
+            {shared ? "Të gjithë skanojnë në të njëjtin dokument." : "Skanimet ruhen vetëm në këtë telefon."}
+          </p>
+        ) : null}
       </header>
 
       {error ? <p className="rounded-2xl bg-[var(--red-bg)] px-4 py-3 text-sm text-[var(--red)]">{error}</p> : null}
