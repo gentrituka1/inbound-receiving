@@ -209,36 +209,39 @@ async function publishCounts(focusRow?: number) {
   return sheet.products;
 }
 
+async function loadPublicProducts(): Promise<Product[]> {
+  const response = await fetch(OPEN_SHEET, { cache: "no-store" });
+  if (!response.ok) throw new Error("Lista e produkteve nuk u ngarkua.");
+  const rows = (await response.json()) as Record<string, string>[];
+  return rows.flatMap((row, index) => {
+    const refCode = String(row["Reference Code"] ?? "").trim();
+    const ean = String(row["Barkod / EAN"] ?? "").trim();
+    if (!refCode && !ean) return [];
+    return [{
+      row: index + 2,
+      orderId: String(row["Order ID"] ?? "").trim(),
+      refCode,
+      ean,
+      name: String(row.Emertimi ?? "").trim(),
+      quantity: Math.max(0, Math.round(Number(row.Sasia) || 0)),
+      scanned: 0,
+    }];
+  });
+}
+
 export async function loadSharedProducts(): Promise<{ shared: boolean; products: Product[] }> {
-  if (!sheetsConfigured()) {
-    const response = await fetch(OPEN_SHEET, { cache: "no-store" });
-    if (!response.ok) throw new Error("Lista e produkteve nuk u ngarkua.");
-    const rows = (await response.json()) as Record<string, string>[];
-    const products = rows.flatMap((row, index) => {
-      const refCode = String(row["Reference Code"] ?? "").trim();
-      const ean = String(row["Barkod / EAN"] ?? "").trim();
-      if (!refCode && !ean) return [];
-      return [{
-        row: index + 2,
-        orderId: String(row["Order ID"] ?? "").trim(),
-        refCode,
-        ean,
-        name: String(row.Emertimi ?? "").trim(),
-        quantity: Math.max(0, Math.round(Number(row.Sasia) || 0)),
-        scanned: 0,
-      }];
-    });
-    return { shared: false, products };
-  }
+  if (!sheetsConfigured()) return { shared: false, products: await loadPublicProducts() };
   try {
     const counts = countsFromLog(await readLog());
     const sheet = await readSheet(counts);
     return { shared: true, products: sheet.products };
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : "";
-    if (!/unable to parse range|skane/i.test(message)) throw cause;
-    const sheet = await readSheet(new Map());
-    return { shared: true, products: sheet.products };
+    if (/unable to parse range|skane/i.test(message)) {
+      const sheet = await readSheet(new Map());
+      return { shared: true, products: sheet.products };
+    }
+    return { shared: false, products: await loadPublicProducts() };
   }
 }
 
